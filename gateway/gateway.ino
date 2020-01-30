@@ -3,12 +3,15 @@
  Although there are many to say thanks to, Ant Elder code is what inspired the technique.
  Using the MD_CirQueue by Marco Colli
      https://github.com/MajicDesigns/MD_CirQueue
+ 
+ Required libraries (sketch -> include library -> manage libraries)
+   - PubSubClient by Nick ‘O Leary     
 */
 
-#include "ESP8266WiFi.h"
+#include <ESP8266WiFi.h>
 #include "secrets.h"
-#include "espnow.h"
-
+#include <espnow.h>
+#include <PubSubClient.h>
 
 
 
@@ -29,7 +32,15 @@ const uint8_t QUEUE_SIZE = 6;
 MD_CirQueue Q(QUEUE_SIZE, sizeof(SENSOR_DATA));
 //***********************************************************
 
-
+//***********************************************************
+// Setting up MQTT and topics. The MQTT broker info is in secrets.h
+String root_topic = "WiFi2MQTT";
+String gatewayStatus_topic = "gateway/status";
+String humidity_topic = "sensor/humidity";
+String temperature_topic = "sensor/temperature";
+WiFiClient espClient;
+PubSubClient client(espClient);
+//***********************************************************
 
 
 void setup() {
@@ -62,6 +73,13 @@ void setup() {
 
     getReading(data, len);
   });
+  Serial.print("Setting up MQTT server");
+  client.set_server(mqtt_server, 1883);
+  bool tmpStatus = client.connect(mqtt_user);
+  Serial.print(", "); Serial.print(tmpStatus,DEC);
+  Serial.print(", Sending 'up' status, ");
+  publishGatewayStarted();
+  Serial.println("done");
 }
 
 void loop() {
@@ -74,6 +92,17 @@ void loop() {
   }
 }
 
+void publishGatewayStarted() {
+  String tmpTopic = root_topic + "/" + gatewayStatus_topic;
+  String tmpPayLoad = "UPtest";
+  bool tmpStatus = publishMQTT(tmpTopic,tmpPayLoad);
+  Serial.print(", " + tmpTopic + ", " + tmpPayLoad + ", ");
+  Serial.print(tmpStatus,DEC);
+}
+bool publishMQTT(String pTopic, String pPayLoad) {
+  return client.publish(pTopic,pPayLoad);
+  //Serial.println(tmpTopic + ", " + tmpPayLoad + ", ");
+}
 void getReading(uint8_t *data, uint8_t len) {
   SENSOR_DATA tmp;
   memcpy(&tmp, data, sizeof(tmp));

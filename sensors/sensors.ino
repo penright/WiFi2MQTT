@@ -10,7 +10,7 @@
 // this is the MAC Address of the remote ESP which this ESP sends its data too
 uint8_t remoteMac[] = {0xC8, 0x2B, 0x96, 0x8, 0x2E, 0xA};
 
-#define WIFI_CHANNEL 11
+#define WIFI_CHANNEL 1
 #define SLEEP_TIME 15e6
 #define SEND_TIMEOUT 10000
 
