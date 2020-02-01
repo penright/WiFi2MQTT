@@ -13,7 +13,7 @@ uint8_t remoteMac[] = {0xC8, 0x2B, 0x96, 0x8, 0x2E, 0xA};
 #define WIFI_CHANNEL 1
 #define SLEEP_TIME 15e6
 #define SEND_TIMEOUT 10000
-#define PIN_KEEPON 16
+#define PIN_KEEPON 6
 // keep in sync with slave struct
 struct SENSOR_DATA {
     float temp;
@@ -26,8 +26,8 @@ volatile boolean readingSent;
 
 void setup() {
   Serial.begin(115200); Serial.println();  
-  pinMode(PIN_KEEPON,OUTPUT);
-  digitalWrite(PIN_KEEPON,HIGH);
+//  pinMode(PIN_KEEPON,OUTPUT);
+//  digitalWrite(PIN_KEEPON,HIGH);
   WiFi.mode(WIFI_STA); // Station mode for sensor/controller node
   WiFi.begin();
   Serial.print("This node mac: "); Serial.println(WiFi.macAddress());

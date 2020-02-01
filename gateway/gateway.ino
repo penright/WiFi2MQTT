@@ -12,7 +12,8 @@
 #include "secrets.h"
 #include <espnow.h>
 #include <PubSubClient.h>
-
+#include <ESP8266HTTPClient.h>
+#include <ArduinoJson.h>
 
 
 #define WIFI_CHANNEL 1
@@ -45,20 +46,44 @@ PubSubClient client(espClient);
 
 void setup() {
   Serial.begin(115200); Serial.println();
+
+ 
   Serial.print("Starting Q ... ");
   Q.begin();  
   Serial.println("done");
+
+  
   initWifi();
   if (esp_now_init()!=0) {
     Serial.println("*** ESP_Now init failed");
     ESP.restart();
   }
-
   Serial.setDebugOutput(true);
   WiFi.printDiag(Serial);
   Serial.setDebugOutput(false);
   Serial.print("This node AP mac: "); Serial.print(WiFi.softAPmacAddress());
   Serial.print(", STA mac: "); Serial.println(WiFi.macAddress());
+
+//***********************************************************
+//Test JSON
+
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;  //Object of class HTTPClient
+    http.begin("http://jsonplaceholder.typicode.com/users/1");
+    int httpCode = http.GET();
+    //Check the returning code                                                                  
+    if (httpCode > 0) {
+      // Get the request response payload
+      String payload = http.getString();
+      // TODO: Parsing
+      Serial.println(payload);
+    }
+    http.end();   //Close connection
+  }
+//***********************************************************
+
+
+
 
   // Note: When ESP8266 is in soft-AP+station mode, this will communicate through station interface
   // if it is in slave role, and communicate through soft-AP interface if it is in controller role,
@@ -74,8 +99,8 @@ void setup() {
     getReading(data, len);
   });
   Serial.print("Setting up MQTT server");
-  client.set_server(mqtt_server, 1883);
-  bool tmpStatus = client.connect(mqtt_user);
+  client.set_server(WiFi2MQTT_mqtt_server, 1883);
+  bool tmpStatus = client.connect(WiFi2MQTT_mqtt_user);
   Serial.print(", "); Serial.print(tmpStatus,DEC);
   Serial.print(", Sending 'up' status, ");
   publishGatewayStarted();
@@ -118,11 +143,11 @@ void initWifi() {
   WiFi.softAP("MyGateway", "12345678", WIFI_CHANNEL, 1);
 
   Serial.print("Connecting to ");
-  Serial.print(ssid);
+  Serial.print(WiFi2MQTT_ssid);
   Serial.print(" ");
   Serial.print(WiFi.SSID());
   Serial.print(" ");
-  WiFi.begin(ssid, password);
+  WiFi.begin(WiFi2MQTT_ssid, WiFi2MQTT_password);
  
   int retries = 20; // 10 seconds
   while ((WiFi.status() != WL_CONNECTED) && (retries-- > 0)) {
