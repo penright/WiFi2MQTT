@@ -1,4 +1,4 @@
-[logo]
+![alt text][logo]
 # WiFi2MQTT
 
 Need to make a secrets.h file in the gateway directory with this contents...
