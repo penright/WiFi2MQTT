@@ -16,14 +16,20 @@
 #include <ArduinoJson.h>
 
 
-#define WIFI_CHANNEL 1
-
+//***********************************************************
+// Setting up struct used in Queues/button presses
 struct SENSOR_DATA {
-    float temp;
-    float hum;
-    float t;
-    float pressure;
+  unsigned long arriveTime;
+  int messageSize;
+  char message[200];
 };
+//***********************************************************
+
+
+#define WIFI_CHANNEL 1
+DynamicJsonDocument doc(1024);
+unsigned long previousButtonCheckMicros = micros();
+unsigned long previousSendUpdateMicros = micros();
 
 
 //***********************************************************
@@ -31,6 +37,8 @@ struct SENSOR_DATA {
 #include "MD_CirQueue.h"
 const uint8_t QUEUE_SIZE = 6;
 MD_CirQueue Q(QUEUE_SIZE, sizeof(SENSOR_DATA));
+// Setting up Array to Hold button presses for future evaulation
+SENSOR_DATA previousComs[QUEUE_SIZE];
 //***********************************************************
 
 //***********************************************************
@@ -40,8 +48,9 @@ String gatewayStatus_topic = "gateway/status";
 String humidity_topic = "sensor/humidity";
 String temperature_topic = "sensor/temperature";
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient client(espClient,WiFi2MQTT_mqtt_server,1883);
 //***********************************************************
+
 
 
 void setup() {
@@ -51,6 +60,8 @@ void setup() {
   Serial.print("Starting Q ... ");
   Q.begin();  
   Serial.println("done");
+  // Initalizing ariveTime to all 0's
+  for (int i = 0; i <= QUEUE_SIZE; i++) {previousComs[i].arriveTime=0;}
 
   
   initWifi();
@@ -63,26 +74,6 @@ void setup() {
   Serial.setDebugOutput(false);
   Serial.print("This node AP mac: "); Serial.print(WiFi.softAPmacAddress());
   Serial.print(", STA mac: "); Serial.println(WiFi.macAddress());
-
-//***********************************************************
-//Test JSON
-
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;  //Object of class HTTPClient
-    http.begin("http://jsonplaceholder.typicode.com/users/1");
-    int httpCode = http.GET();
-    //Check the returning code                                                                  
-    if (httpCode > 0) {
-      // Get the request response payload
-      String payload = http.getString();
-      // TODO: Parsing
-      Serial.println(payload);
-    }
-    http.end();   //Close connection
-  }
-//***********************************************************
-
-
 
 
   // Note: When ESP8266 is in soft-AP+station mode, this will communicate through station interface
@@ -99,7 +90,7 @@ void setup() {
     getReading(data, len);
   });
   Serial.print("Setting up MQTT server");
-  client.set_server(WiFi2MQTT_mqtt_server, 1883);
+  //client.set_Server(WiFi2MQTT_mqtt_server, 1883);
   bool tmpStatus = client.connect(WiFi2MQTT_mqtt_user);
   Serial.print(", "); Serial.print(tmpStatus,DEC);
   Serial.print(", Sending 'up' status, ");
@@ -108,33 +99,120 @@ void setup() {
 }
 
 void loop() {
+  client.loop();
   if (!Q.isEmpty()){
     SENSOR_DATA tmp;
     Q.pop((uint8_t*)&tmp);
-    Serial.print(" Temp: ");
-    Serial.println(tmp.t);
-    delay(500);
+    Serial.print(" Message Size1: ");
+    Serial.print(tmp.messageSize);
+    Serial.print(", ");
+    Serial.print(tmp.message);
+    Serial.print(", ");
+    Serial.println(tmp.arriveTime);
+
+    
+    String message = String(tmp.message);
+    int messageSize = tmp.messageSize;
+    unsigned long arriveTime = tmp.arriveTime;
+    
+    Serial.print(" Message Size2: ");
+    Serial.print(messageSize);
+    Serial.print(", ");
+    Serial.print(message);
+    Serial.print(", ");
+    Serial.println(arriveTime);
+    deserializeJson(doc, message);
+    String nodeName = doc["nodeName"];
+    String action = doc["action"];
+    Serial.println(nodeName + ", " + action);
+//    for (int i = 0; i <= QUEUE_SIZE; i++) {
+//      if (previousComs[i].arriveTime == 0){
+//        previousComs[i].arriveTime = arriveTime;
+//        previousComs[i].messageSize = messageSize;
+//        message.toCharArray(previousComs[i].message,messageSize);
+//      }
+//    }
+  }
+  unsigned long currentSendUpdateMicros = millis();
+  unsigned long elaspsed = currentSendUpdateMicros - previousSendUpdateMicros;
+  if (elaspsed >= 30000) {
+    String tmpTopic = root_topic + "/" + gatewayStatus_topic;
+    String tmpPayLoad = "StillUp";
+    bool tmpStatus = publishMQTT(tmpTopic,tmpPayLoad);
+    Serial.print(elaspsed,DEC);
+    Serial.print(", " + tmpTopic + ", " + tmpPayLoad + ", ");
+    Serial.println(tmpStatus,DEC);
+    previousSendUpdateMicros = millis();
+  }
+//  unsigned long currentButtonCheckMicros = micros();
+//  unsigned long elaspsed = currentButtonCheckMicros - previousButtonCheckMicros;
+//  if (elaspsed >= 200) {
+//    String tmpListOfNodesToLook = listOfNondes();
+//    for (int x = 0; x <= QUEUE_SIZE; x++) {
+//      if tmpListOfNodes[x] = nodeNameToLook{
+//        break;
+//      }
+//    }
+//    
+//    previousButtonCheckMicros = micros();  
+//  }
+//}
+
+}
+
+//This function should return a list of Nodes to process
+void listOfNodes(String pListOfNodes[]){
+  for (int i = 0; i <= QUEUE_SIZE; i++) {
+    deserializeJson(doc, String(previousComs[i].message));
+    String nodeNameToLook = doc["nodeName"];
+    for (int x = 0; x <= QUEUE_SIZE; x++) {
+      if (pListOfNodes[x].length() == 0) {
+        pListOfNodes[x] = nodeNameToLook;
+      }
+      if (pListOfNodes[x] == nodeNameToLook){
+        break;
+      }
+    }
   }
 }
 
+
 void publishGatewayStarted() {
   String tmpTopic = root_topic + "/" + gatewayStatus_topic;
-  String tmpPayLoad = "UPtest";
+  String tmpPayLoad = "UP";
   bool tmpStatus = publishMQTT(tmpTopic,tmpPayLoad);
   Serial.print(", " + tmpTopic + ", " + tmpPayLoad + ", ");
   Serial.print(tmpStatus,DEC);
 }
+
 bool publishMQTT(String pTopic, String pPayLoad) {
+  Serial.println("PubMQTT " + pTopic + ", " + pPayLoad + ", ");
   return client.publish(pTopic,pPayLoad);
-  //Serial.println(tmpTopic + ", " + tmpPayLoad + ", ");
 }
+
 void getReading(uint8_t *data, uint8_t len) {
+  Serial.println("1");
   SENSOR_DATA tmp;
+  Serial.println("2");
   memcpy(&tmp, data, sizeof(tmp));
-  Serial.print("push data start, ");
+  Serial.println("3");
+  tmp.arriveTime = micros();
+  Serial.println("4");
+  Serial.println(tmp.message);
+  Serial.print(" Message Size3: ");
+  Serial.print(tmp.messageSize);
+  Serial.print(", ");
+  Serial.print(tmp.message);
+  Serial.print(", ");
+  Serial.println(tmp.arriveTime);
   Q.push((uint8_t*)&tmp);
-  Serial.print(tmp.t);
-  Serial.println(", done");
+  Serial.print(" Message Size4: ");
+  Serial.print(tmp.messageSize);
+  Serial.print(", ");
+  Serial.print(tmp.message);
+  Serial.print(", ");
+  Serial.println(tmp.arriveTime);
+  Serial.println("5");
 }
 
 void initWifi() {
