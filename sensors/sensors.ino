@@ -10,18 +10,23 @@
 
 
 // this is the MAC Address of the remote ESP which this ESP sends its data too
-uint8_t remoteMac[] = {0xC8, 0x2B, 0x96, 0x8, 0x2E, 0xA};
+// ESP-12 Mac uint8_t remoteMac[] = {0xC8, 0x2B, 0x96, 0x8, 0x2E, 0xA};
+// ESP-01 Mac uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0x63};
+uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0x63};
 
 #define WIFI_CHANNEL 1
 const String nodeName = "Button1";
+volatile boolean messageSent;
+const String buttonPress1 = "buttonPress1";
+const String buttonPress2 = "buttonPress2";
+const String buttonLongPress = "buttonLongPress";
 
 struct SENSOR_DATA {
   unsigned long arriveTime;
   int messageSize;
-  char message[200];
+  char message[150];
 };
 
-volatile boolean readingSent;
 
 void setup() {
   Serial.begin(115200); Serial.println();  
@@ -48,66 +53,48 @@ void setup() {
     char macString[50] = {0};
     sprintf(macString,"%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     Serial.println(macString);
-
-    readingSent = true;
+    messageSent = true;
   });
-
-  sendReading();
-
-//  if (readingSent || (millis() > SEND_TIMEOUT)) {
-//    Serial.print("Going to sleep, uptime: "); Serial.println(millis());  
-//    ESP.deepSleep(SLEEP_TIME, WAKE_RF_DEFAULT);
-//  }
-
+  Serial.println("Call back is setup");
+  messageSent = false;
+  sendMessage("buttonPress1");
+  while(!messageSent){Serial.print("."); yield();}
+  unsigned long previousWaitForLongPress = millis();
+  unsigned long currentWaitForLongPress = millis();
+  unsigned long elaspsed = currentWaitForLongPress - previousWaitForLongPress;
+  Serial.print("Start of delay for LongPress "); Serial.println(elaspsed);
+  while(elaspsed<1000){
+    //Serial.print(" ."); Serial.print(elaspsed);
+    yield();
+    currentWaitForLongPress = millis();
+    elaspsed = currentWaitForLongPress - previousWaitForLongPress;
+  }
+  Serial.println();
+  messageSent = false;
+  sendMessage("buttonLongPress");
+  while(!messageSent){Serial.print("."); yield();}
 }
 
 void loop() {
-
-}
-
-void sendReading() {
-    readingSent = false;
-    sendMessage("buttonPress1");
-    delay(1000);
-    sendMessage("buttonLongPress");
-
-    
-//    DynamicJsonDocument doc(300);
-//      String input =
-//      "{\"sensor\":\"gps\",\"time\":1351824120,\"data\":[48.756080,2.302038]}";
-//    deserializeJson(doc, input);
-//    JsonObject jsonOBJ = doc.as<JsonObject>();
-//    Serial.print("-"); Serial.print(jsonOBJ); Serial.print("-"); Serial.print(sizeof(jsonOBJ)); Serial.println("-");
-//    u8 bs[sizeof(jsonOBJ)];
-//    memcpy(bs, &jsonOBJ, sizeof(jsonOBJ));
-//    esp_now_send(NULL, bs, sizeof(bs)); // NULL means send to all peers
-//    
-//    SENSOR_DATA sd;
-//    sd.t = millis();
-//    Serial.print("sendReading, t="); Serial.println(sd.t);
-//
-//    u8 bs[sizeof(sd)];
-//    memcpy(bs, &sd, sizeof(sd));
-//    esp_now_send(NULL, bs, sizeof(bs)); // NULL means send to all peers
 }
 
 void sendMessage(String pmessage){
-     SENSOR_DATA sd;
-    String input =
-      "{\"nodeName\":\"" + nodeName + "\",\"action\":\"" + pmessage +"\"}";
-    Serial.print(String(input));
-    sd.messageSize=input.length();
-    Serial.print(", ");
-    Serial.print(sd.messageSize);
-    Serial.print(", ");
-    Serial.println(input.length());
-    //memset(0, sd.message, sizeof(sd.message));
-    char tmp[sd.messageSize+1]; 
-    input.toCharArray(tmp,sizeof(tmp));
-    memcpy(sd.message, &tmp, sizeof(tmp));
-    Serial.println(String(sd.message));
-    u8 bs[sizeof(sd)];
-    memcpy(bs, &sd, sizeof(sd));
-    esp_now_send(NULL, bs, sizeof(bs)); // NULL means send to all peers
-
+  SENSOR_DATA sd;
+  String input =
+    "{\"nodeName\":\"" + nodeName + "\",\"action\":\"" + pmessage +"\"}";
+  Serial.print("Start Send Message: " + input);
+  sd.messageSize=input.length();
+  Serial.print(", ");
+  Serial.print(sd.messageSize);
+  Serial.print(", ");
+  Serial.println(input.length());
+  //memset(0, sd.message, sizeof(sd.message));
+  char tmp[sd.messageSize+1]; 
+  input.toCharArray(tmp,sizeof(tmp));
+  memcpy(sd.message, &tmp, sizeof(tmp));
+  Serial.print("Send " + String(sd.message) + ", ");
+  u8 bs[sizeof(sd)];
+  memcpy(bs, &sd, sizeof(sd));
+  esp_now_send(NULL, bs, sizeof(bs)); // NULL means send to all peers
+  Serial.println("sent");
 }

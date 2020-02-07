@@ -30,6 +30,9 @@ struct SENSOR_DATA {
 DynamicJsonDocument doc(1024);
 unsigned long previousButtonCheckMicros = micros();
 unsigned long previousSendUpdateMicros = micros();
+const String buttonPress1 = "buttonPress1";
+const String buttonPress2 = "buttonPress2";
+const String buttonLongPress = "buttonLongPress";
 
 
 //***********************************************************
@@ -52,7 +55,6 @@ PubSubClient client(espClient,WiFi2MQTT_mqtt_server,1883);
 //***********************************************************
 
 
-
 void setup() {
   Serial.begin(115200); Serial.println();
 
@@ -61,7 +63,7 @@ void setup() {
   Q.begin();  
   Serial.println("done");
   // Initalizing ariveTime to all 0's
-  for (int i = 0; i <= QUEUE_SIZE; i++) {previousComs[i].arriveTime=0;}
+  //for (int i = 0; i <= QUEUE_SIZE; i++) {previousComs[i].arriveTime=0;}
 
   
   initWifi();
@@ -125,16 +127,51 @@ void loop() {
     String nodeName = doc["nodeName"];
     String action = doc["action"];
     Serial.println(nodeName + ", " + action);
-//    for (int i = 0; i <= QUEUE_SIZE; i++) {
-//      if (previousComs[i].arriveTime == 0){
-//        previousComs[i].arriveTime = arriveTime;
-//        previousComs[i].messageSize = messageSize;
-//        message.toCharArray(previousComs[i].message,messageSize);
-//      }
-//    }
+    for (int i = 0; i <= QUEUE_SIZE; i++) {
+      if (previousComs[i].arriveTime == 0){
+        previousComs[i].arriveTime = arriveTime;
+        previousComs[i].messageSize = messageSize;
+        message.toCharArray(previousComs[i].message,messageSize);
+      }
+    }
   }
+
+  //**************************************************************
+  //This section will scan previousComs to see if a double key or long press
+  //   To know if a all it is a single keypress, it will take more than a second
+  //   for now, lets go 1.75 seconds or 1750 micro seconds.
+  //   Lets check every .5 seconds
+  unsigned long currentButtonCheckMicros = micros();
+  unsigned long elaspsed = currentButtonCheckMicros - previousButtonCheckMicros;
+  if (elaspsed >= 500) {
+    //This is the outer loop testing each one if time has expired
+    for (int i = 0; i <= QUEUE_SIZE; i++) {
+      if (previousComs[i].arriveTime == 0){
+        // Only where arriveTime is not 0 does it need to be process
+        String message = String(previousComs[i].message);
+        int messageSize = previousComs[i].messageSize;
+        unsigned long arriveTime = previousComs[i].arriveTime;
+        //Lets deserialize the message
+        deserializeJson(doc, message);
+        String thisNodeName = doc["nodeName"];
+        String thisAction = doc["action"];
+ 
+        //First lets see if it is a long press, if so then we just need
+        //  to clean up the previousComs array and publish the message
+        
+
+        
+        //Now we need a inner loop to see if it exist
+      }
+    }
+
+    previousButtonCheckMicros = micros();  
+  }
+
+  //**************************************************************
+  //This section will publish (I am up) message every x seconds
   unsigned long currentSendUpdateMicros = millis();
-  unsigned long elaspsed = currentSendUpdateMicros - previousSendUpdateMicros;
+  elaspsed = currentSendUpdateMicros - previousSendUpdateMicros;
   if (elaspsed >= 30000) {
     String tmpTopic = root_topic + "/" + gatewayStatus_topic;
     String tmpPayLoad = "StillUp";
@@ -144,21 +181,9 @@ void loop() {
     Serial.println(tmpStatus,DEC);
     previousSendUpdateMicros = millis();
   }
-//  unsigned long currentButtonCheckMicros = micros();
-//  unsigned long elaspsed = currentButtonCheckMicros - previousButtonCheckMicros;
-//  if (elaspsed >= 200) {
-//    String tmpListOfNodesToLook = listOfNondes();
-//    for (int x = 0; x <= QUEUE_SIZE; x++) {
-//      if tmpListOfNodes[x] = nodeNameToLook{
-//        break;
-//      }
-//    }
-//    
-//    previousButtonCheckMicros = micros();  
-//  }
-//}
-
+  //**************************************************************
 }
+
 
 //This function should return a list of Nodes to process
 void listOfNodes(String pListOfNodes[]){
@@ -175,7 +200,6 @@ void listOfNodes(String pListOfNodes[]){
     }
   }
 }
-
 
 void publishGatewayStarted() {
   String tmpTopic = root_topic + "/" + gatewayStatus_topic;
