@@ -51,7 +51,7 @@ String gatewayStatus_topic = "gateway/status";
 String humidity_topic = "sensor/humidity";
 String temperature_topic = "sensor/temperature";
 WiFiClient espClient;
-PubSubClient client(espClient,WiFi2MQTT_mqtt_server,1883);
+PubSubClient client(WiFi2MQTT_mqtt_server,1883,espClient);
 //***********************************************************
 
 
@@ -93,10 +93,9 @@ void setup() {
   });
   Serial.print("Setting up MQTT server");
   //client.set_Server(WiFi2MQTT_mqtt_server, 1883);
-  bool tmpStatus = client.connect(WiFi2MQTT_mqtt_user);
+  bool tmpStatus = client.connect("WiFi2MQTT",WiFi2MQTT_mqtt_user,WiFi2MQTT_mqtt_password);
   Serial.print(", "); Serial.print(tmpStatus,DEC);
   Serial.print(", Sending 'up' status, ");
-  publishGatewayStarted();
   Serial.println("done");
 }
 
@@ -211,7 +210,9 @@ void publishGatewayStarted() {
 
 bool publishMQTT(String pTopic, String pPayLoad) {
   Serial.println("PubMQTT " + pTopic + ", " + pPayLoad + ", ");
-  return client.publish(pTopic,pPayLoad);
+  char tmpTopic[pTopic.length()];
+  char tmpPayLoad[pPayLoad.length()];
+  return client.publish(tmpTopic,tmpPayLoad);
 }
 
 void getReading(uint8_t *data, uint8_t len) {
