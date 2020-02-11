@@ -19,17 +19,17 @@
 //***********************************************************
 // Setting up struct used in Queues/button presses
 struct SENSOR_DATA {
-  unsigned long arriveTime;
+  char message[175];
   int messageSize;
-  char message[200];
+  unsigned long arriveTime;
 };
 //***********************************************************
 
 
 #define WIFI_CHANNEL 1
 DynamicJsonDocument doc(1024);
-unsigned long previousButtonCheckMicros = micros();
-unsigned long previousSendUpdateMicros = micros();
+unsigned long previousButtonCheckMillis = millis();
+unsigned long previousSendUpdateMillis = millis();
 const String buttonPress1 = "buttonPress1";
 const String buttonPress2 = "buttonPress2";
 const String buttonLongPress = "buttonLongPress";
@@ -50,8 +50,16 @@ String root_topic = "WiFi2MQTT";
 String gatewayStatus_topic = "gateway/status";
 String humidity_topic = "sensor/humidity";
 String temperature_topic = "sensor/temperature";
+String buttonPress_topic = "action/buttonPress";
+void callback(char* pTopic, byte* pPayload, unsigned int pLength) {
+  String topic = String(pTopic);
+  char tmpPayload[pLength];
+  memcpy(&tmpPayload,pPayload,pLength);
+  String payload = String(tmpPayload);
+  Serial.println("R mesg: " + topic + ", " + payload);
+}
 WiFiClient espClient;
-PubSubClient client(WiFi2MQTT_mqtt_server,1883,espClient);
+PubSubClient client(WiFi2MQTT_mqtt_server,1883,callback,espClient);
 //***********************************************************
 
 
@@ -63,7 +71,7 @@ void setup() {
   Q.begin();  
   Serial.println("done");
   // Initalizing ariveTime to all 0's
-  //for (int i = 0; i <= QUEUE_SIZE; i++) {previousComs[i].arriveTime=0;}
+  for (int i = 0; i <= QUEUE_SIZE; i++) {previousComs[i].arriveTime=0;}
 
   
   initWifi();
@@ -96,56 +104,91 @@ void setup() {
   bool tmpStatus = client.connect("WiFi2MQTT",WiFi2MQTT_mqtt_user,WiFi2MQTT_mqtt_password);
   Serial.print(", "); Serial.print(tmpStatus,DEC);
   Serial.print(", Sending 'up' status, ");
+  publishGatewayStatus("Started","Up");
   Serial.println("done");
 }
 
 void loop() {
   client.loop();
+  //*******************************************************************************
+  //Any messages in the Q needs to be process
   if (!Q.isEmpty()){
     SENSOR_DATA tmp;
     Q.pop((uint8_t*)&tmp);
     Serial.print(" Message Size1: ");
     Serial.print(tmp.messageSize);
-    Serial.print(", ");
-    Serial.print(tmp.message);
-    Serial.print(", ");
+    Serial.print(String(tmp.message));
     Serial.println(tmp.arriveTime);
 
-    
     String message = String(tmp.message);
     int messageSize = tmp.messageSize;
     unsigned long arriveTime = tmp.arriveTime;
-    
-    Serial.print(" Message Size2: ");
-    Serial.print(messageSize);
-    Serial.print(", ");
-    Serial.print(message);
-    Serial.print(", ");
-    Serial.println(arriveTime);
     deserializeJson(doc, message);
     String nodeName = doc["nodeName"];
     String action = doc["action"];
     Serial.println(nodeName + ", " + action);
-    for (int i = 0; i <= QUEUE_SIZE; i++) {
+    String action2Add = action;  //This will get changed to button 2 press if it is a button 1 and there is
+                                 //  a button 1 press found. Other wise add it as is
+    Serial.println("1 message: " + message + " nodeName: " + nodeName + " action: " + action + " action2Add: " + action2Add);
+    if (action == buttonPress1) { // Is this the first or second button press for this node
+      Serial.println("Button Press 1 ");
+      // Check to see if a button 1 press exist for this node and change action2Add
+      for (int i = 0; i < QUEUE_SIZE; i++) { //Start of search for button 1 press
+        message = String(previousComs[i].message);
+        deserializeJson(doc, message);
+        String tmpNodeName = doc["nodeName"];
+        String tmpAction = doc["action"];
+        Serial.print("On loop: "); 
+        Serial.print(i);
+        Serial.print(", " + message + ", "); 
+        Serial.print(QUEUE_SIZE);
+        Serial.print(", " + tmpNodeName + ", " + nodeName + String(previousComs[i].arriveTime));
+        if ((previousComs[i].arriveTime != 0) &&
+             (nodeName == tmpNodeName) &&
+             (tmpAction == buttonPress1)){
+            Serial.print(" This is a second button push ");
+            action2Add = buttonPress2;
+            break;
+        }
+        Serial.println();
+      } //End of search for buttonPress1
+    }
+    //Build message with corrected action2Add
+    Serial.println("2 message: " + message + " nodeName: " + nodeName + " action: " + action + " action2Add: " + action2Add);
+    String tmpMessage = "{\"nodeName\":\""+nodeName+"\",\"action\":\""+action2Add+"\"}";
+    Serial.println("The tmpMessage: " + tmpMessage);
+    // Add to Message 
+    for (int i = 0; i < QUEUE_SIZE; i++) { //Search for next empty slot
       if (previousComs[i].arriveTime == 0){
         previousComs[i].arriveTime = arriveTime;
-        previousComs[i].messageSize = messageSize;
-        message.toCharArray(previousComs[i].message,messageSize);
+        previousComs[i].messageSize = tmpMessage.length()+1;
+        tmpMessage.toCharArray(previousComs[i].message,tmpMessage.length()+1);
+        break;
       }
+    } // End for Search of empty slot
+    Serial.println("Dump previousComs[] ");
+    for (int x = 0; x < QUEUE_SIZE; x++) {
+      Serial.print(String(x));
+      Serial.print(", " + String(previousComs[x].arriveTime));
+      Serial.println(", " + String(previousComs[x].message));
     }
-  }
 
-  //**************************************************************
+  }
+  //*******************************************************************************
+
+  //*******************************************************************************
   //This section will scan previousComs to see if a double key or long press
   //   To know if a all it is a single keypress, it will take more than a second
   //   for now, lets go 1.75 seconds or 1750 micro seconds.
   //   Lets check every .5 seconds
-  unsigned long currentButtonCheckMicros = micros();
-  unsigned long elaspsed = currentButtonCheckMicros - previousButtonCheckMicros;
-  if (elaspsed >= 500) {
+  unsigned long currentButtonCheckMillis = millis();
+  unsigned long elaspsed = currentButtonCheckMillis - previousButtonCheckMillis;
+  if (elaspsed > 500) {
     //This is the outer loop testing each one if time has expired
-    for (int i = 0; i <= QUEUE_SIZE; i++) {
-      if (previousComs[i].arriveTime == 0){
+    for (int i = 0; i < QUEUE_SIZE; i++) {
+      bool sendMessageAndRemove = false;
+      if (previousComs[i].arriveTime != 0){
+        Serial.println("Record to process "+String(i)+", "+String(previousComs[i].message));
         // Only where arriveTime is not 0 does it need to be process
         String message = String(previousComs[i].message);
         int messageSize = previousComs[i].messageSize;
@@ -157,87 +200,110 @@ void loop() {
  
         //First lets see if it is a long press, if so then we just need
         //  to clean up the previousComs array and publish the message
-        
+        Serial.println("3 message: " + message + " thisNodeName: " + thisNodeName + " thisAction: " + thisAction + " arriveTime: " + String(arriveTime));
+        if (thisAction == buttonLongPress){
+          sendMessageAndRemove = true;  
+        } else if (thisAction == buttonPress2){
+          sendMessageAndRemove = true;  
+        } else if (thisAction == buttonPress1){
+          unsigned long tmpCurrent = millis();
+          elaspsed = tmpCurrent - previousComs[i].arriveTime;
+          Serial.println("elaspsed time: "+String(elaspsed));
+          if (elaspsed > 1750){
+            sendMessageAndRemove = true;
+          }
+        }
+        if (sendMessageAndRemove){
+          publishButtonPress(thisNodeName,thisAction);
+          //Inner loop to clean up other nodes
+          for (int x = 0; x < QUEUE_SIZE; x++) {
+            if (previousComs[x].arriveTime != 0){
+              message = String(previousComs[x].message);
+              messageSize = previousComs[x].messageSize;
+              //Lets deserialize the message
+              deserializeJson(doc, message);
+              String tmpNodeName = doc["nodeName"];
+              String tmpAction = doc["action"];
+              Serial.print("tmpNodeName: " + tmpNodeName + "thisNodeName: " + thisNodeName + " tmpAction: " + tmpAction + ", ");
+              if (tmpNodeName == thisNodeName){
+                Serial.print("setting arrive time 0 " + x);
+                previousComs[x].arriveTime = 0;
+              }
+              Serial.println();
+            }
+         }
+       }//End of sendMessageAndRemove test
+     }// end of test for non zero arriveTime 
+    }//end of for
+    previousButtonCheckMillis = millis();  
+  } //end of previousComs[] scans ends
+  //*******************************************************************************
 
-        
-        //Now we need a inner loop to see if it exist
-      }
-    }
-
-    previousButtonCheckMicros = micros();  
-  }
-
-  //**************************************************************
+  //*******************************************************************************
   //This section will publish (I am up) message every x seconds
-  unsigned long currentSendUpdateMicros = millis();
-  elaspsed = currentSendUpdateMicros - previousSendUpdateMicros;
-  if (elaspsed >= 30000) {
-    String tmpTopic = root_topic + "/" + gatewayStatus_topic;
-    String tmpPayLoad = "StillUp";
-    bool tmpStatus = publishMQTT(tmpTopic,tmpPayLoad);
-    Serial.print(elaspsed,DEC);
-    Serial.print(", " + tmpTopic + ", " + tmpPayLoad + ", ");
+  unsigned long currentSendUpdateMillis = millis();
+  elaspsed = currentSendUpdateMillis - previousSendUpdateMillis;
+  if (elaspsed > 30000) {
+    bool tmpStatus = publishGatewayStatus("Status","StillUp");
     Serial.println(tmpStatus,DEC);
-    previousSendUpdateMicros = millis();
+//    Serial.println("Dump (30) previousComs[] ");
+//    for (int x = 0; x < QUEUE_SIZE; x++) {
+//      Serial.print(String(x));
+//      Serial.print(", " + String(previousComs[x].arriveTime));
+//      Serial.println(", " + String(previousComs[x].message));
+//    }
+    previousSendUpdateMillis = millis();
   }
-  //**************************************************************
+  //*******************************************************************************
 }
 
 
-//This function should return a list of Nodes to process
-void listOfNodes(String pListOfNodes[]){
-  for (int i = 0; i <= QUEUE_SIZE; i++) {
-    deserializeJson(doc, String(previousComs[i].message));
-    String nodeNameToLook = doc["nodeName"];
-    for (int x = 0; x <= QUEUE_SIZE; x++) {
-      if (pListOfNodes[x].length() == 0) {
-        pListOfNodes[x] = nodeNameToLook;
-      }
-      if (pListOfNodes[x] == nodeNameToLook){
-        break;
-      }
-    }
-  }
-}
-
-void publishGatewayStarted() {
-  String tmpTopic = root_topic + "/" + gatewayStatus_topic;
-  String tmpPayLoad = "UP";
+// This function rormats and sends the button press
+bool publishButtonPress(String pNode, String pAction){
+  String tmpTopic = root_topic + "/" + buttonPress_topic;
+  String tmpPayLoad = "{\"node\":\""+pNode+"\",\"action\":\""+pAction+"\"}";
   bool tmpStatus = publishMQTT(tmpTopic,tmpPayLoad);
   Serial.print(", " + tmpTopic + ", " + tmpPayLoad + ", ");
   Serial.print(tmpStatus,DEC);
+  return tmpStatus;
+}
+
+bool publishGatewayStatus(String pStatusType, String pStatusValue) {
+  String tmpTopic = root_topic + "/" + gatewayStatus_topic;
+  String tmpPayLoad = "{\"status\":\""+pStatusType+"\",\"value\":\""+pStatusValue+"\"}";
+  bool tmpStatus = publishMQTT(tmpTopic,tmpPayLoad);
+  Serial.print(", " + tmpTopic + ", " + tmpPayLoad + ", ");
+  Serial.print(tmpStatus,DEC);
+  return tmpStatus;
 }
 
 bool publishMQTT(String pTopic, String pPayLoad) {
   Serial.println("PubMQTT " + pTopic + ", " + pPayLoad + ", ");
-  char tmpTopic[pTopic.length()];
-  char tmpPayLoad[pPayLoad.length()];
-  return client.publish(tmpTopic,tmpPayLoad);
+  char topic[pTopic.length()+1];
+  char payLoad[pPayLoad.length()+1];
+  pTopic.toCharArray(topic,pTopic.length()+1);
+  pPayLoad.toCharArray(payLoad,pPayLoad.length()+1);
+  return client.publish(topic,payLoad);
 }
 
 void getReading(uint8_t *data, uint8_t len) {
-  Serial.println("1");
   SENSOR_DATA tmp;
-  Serial.println("2");
+  SENSOR_DATA tmp1;
   memcpy(&tmp, data, sizeof(tmp));
-  Serial.println("3");
-  tmp.arriveTime = micros();
-  Serial.println("4");
+  tmp.arriveTime = millis();
   Serial.println(tmp.message);
   Serial.print(" Message Size3: ");
   Serial.print(tmp.messageSize);
-  Serial.print(", ");
   Serial.print(tmp.message);
-  Serial.print(", ");
   Serial.println(tmp.arriveTime);
   Q.push((uint8_t*)&tmp);
-  Serial.print(" Message Size4: ");
-  Serial.print(tmp.messageSize);
-  Serial.print(", ");
-  Serial.print(tmp.message);
-  Serial.print(", ");
-  Serial.println(tmp.arriveTime);
-  Serial.println("5");
+//  Q.peek((uint8_t*)&tmp1);
+//  Serial.print(" Message Size4: ");
+//  Serial.print(tmp1.messageSize);
+//  Serial.print(", ");
+//  Serial.print(tmp1.message);
+//  Serial.print(", ");
+//  Serial.println(tmp1.arriveTime);
 }
 
 void initWifi() {

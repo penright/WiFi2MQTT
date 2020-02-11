@@ -10,9 +10,10 @@
 
 
 // this is the MAC Address of the remote ESP which this ESP sends its data too
-// ESP-12 Mac uint8_t remoteMac[] = {0xC8, 0x2B, 0x96, 0x8, 0x2E, 0xA};
-// ESP-01 Mac uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0x63};
-uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0x63};
+// ESP-12       Mac uint8_t remoteMac[] = {0xC8, 0x2B, 0x96, 0x8, 0x2E, 0xA};
+// ESP-01       Mac uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0x63};
+// ESP-01(4meg) Mac uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0xA5};
+uint8_t remoteMac[] = {0xEE, 0xFA, 0xBC, 0xC5, 0x7B, 0xA5};
 
 #define WIFI_CHANNEL 1
 const String nodeName = "Button1";
@@ -22,9 +23,9 @@ const String buttonPress2 = "buttonPress2";
 const String buttonLongPress = "buttonLongPress";
 
 struct SENSOR_DATA {
-  unsigned long arriveTime;
+  char message[175];
   int messageSize;
-  char message[150];
+  unsigned long arriveTime;
 };
 
 
