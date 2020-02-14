@@ -18,9 +18,11 @@
 
 //***********************************************************
 // Setting up struct used in Queues/button presses
+// Because of Structure Packing, the elements of this struct
+//  must be in this order to work. And match the gateway/node
 struct SENSOR_DATA {
-  char message[175];
   int messageSize;
+  char message[175];
   unsigned long arriveTime;
 };
 //***********************************************************
@@ -244,8 +246,14 @@ void loop() {
   unsigned long currentSendUpdateMillis = millis();
   elaspsed = currentSendUpdateMillis - previousSendUpdateMillis;
   if (elaspsed > 30000) {
+    Serial.setDebugOutput(true);
+    WiFi.printDiag(Serial);
+    Serial.setDebugOutput(false);
     bool tmpStatus = publishGatewayStatus("Status","StillUp");
     Serial.println(tmpStatus,DEC);
+    Serial.setDebugOutput(true);
+    WiFi.printDiag(Serial);
+    Serial.setDebugOutput(false);
 //    Serial.println("Dump (30) previousComs[] ");
 //    for (int x = 0; x < QUEUE_SIZE; x++) {
 //      Serial.print(String(x));
@@ -289,6 +297,7 @@ bool publishMQTT(String pTopic, String pPayLoad) {
 void getReading(uint8_t *data, uint8_t len) {
   SENSOR_DATA tmp;
   SENSOR_DATA tmp1;
+  Serial.println("size of tmp: " + String(sizeof(tmp)) + " tmp1: " + String(sizeof(tmp1)));
   memcpy(&tmp, data, sizeof(tmp));
   tmp.arriveTime = millis();
   Serial.println(tmp.message);
@@ -297,13 +306,13 @@ void getReading(uint8_t *data, uint8_t len) {
   Serial.print(tmp.message);
   Serial.println(tmp.arriveTime);
   Q.push((uint8_t*)&tmp);
-//  Q.peek((uint8_t*)&tmp1);
-//  Serial.print(" Message Size4: ");
-//  Serial.print(tmp1.messageSize);
-//  Serial.print(", ");
-//  Serial.print(tmp1.message);
-//  Serial.print(", ");
-//  Serial.println(tmp1.arriveTime);
+  Q.peek((uint8_t*)&tmp1);
+  Serial.print(" Message Size4: ");
+  Serial.print(tmp1.messageSize);
+  Serial.print(", ");
+  Serial.print(tmp1.message);
+  Serial.print(", ");
+  Serial.println(tmp1.arriveTime);
 }
 
 void initWifi() {

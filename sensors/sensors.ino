@@ -22,11 +22,16 @@ const String buttonPress1 = "buttonPress1";
 const String buttonPress2 = "buttonPress2";
 const String buttonLongPress = "buttonLongPress";
 
+//***********************************************************
+// Setting up struct used in Queues/button presses
+// Because of Structure Packing, the elements of this struct
+//  must be in this order to work. And match the gateway/node
 struct SENSOR_DATA {
-  char message[175];
   int messageSize;
+  char message[175];
   unsigned long arriveTime;
 };
+//***********************************************************
 
 
 void setup() {
